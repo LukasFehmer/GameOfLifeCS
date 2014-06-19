@@ -132,13 +132,11 @@ namespace GameOfLife {
             myGameTask = Task.Factory.StartNew(
                 () => {
                     myIsGameRunning = true;
-                    bool stillSomeoneAlive = true;
                     bool[,] newField;
                     int neighbors;
 
-                    while (stillSomeoneAlive && !ct.IsCancellationRequested) {
+                    while (!ct.IsCancellationRequested) {
                         newField = CopyBoolArray(BoolField);
-                        stillSomeoneAlive = false;
 
                         for (int row = 0; row < NCells; ++row) {
                             for (int col = 0; col < NCells; ++col) {
@@ -155,8 +153,6 @@ namespace GameOfLife {
                                 //- life cell with more than three neighbors dies
                                 else if (BoolField[row, col] && (neighbors > 3))
                                     newField[row, col] = false;
-
-                                stillSomeoneAlive = stillSomeoneAlive || newField[row, col];
                             }
                         }
 
