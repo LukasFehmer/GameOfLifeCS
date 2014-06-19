@@ -26,8 +26,8 @@ using System.Windows.Shapes;
 namespace GameOfLife {
 
     public class ConwaysGame {
-        private bool[,] BoolField;
         private Brush myBackColor;
+        private bool[,] myBoolField;
         private Brush myBorderColor;
         private byte myBorderSize;
         private CancellationTokenSource myCancellation;
@@ -37,6 +37,9 @@ namespace GameOfLife {
         private bool myIsGameRunning;
         private int myMsDelay;
         private int myNCells;
+        private bool[,] myNewField;
+        private int myNumberOfTasks;
+        private ManualResetEvent mySignal;
         private Rectangle[,] RectField;
 
         public ConwaysGame(Canvas pGameCanvas) {
@@ -63,12 +66,12 @@ namespace GameOfLife {
         }
 
         public void Clear() {
-            BoolField = new bool[NCells, NCells];
+            myBoolField = new bool[NCells, NCells];
         }
 
         public void DrawGrid() {
             RectField = new Rectangle[NCells, NCells];
-            BoolField = new bool[NCells, NCells];
+            myBoolField = new bool[NCells, NCells];
             double cellWidth = (GameCanvas.Width - BorderSize - BorderSize * NCells) / NCells;
             double cellHeight = (GameCanvas.Height - BorderSize - BorderSize * NCells) / NCells;
             Rectangle rect = new Rectangle();
@@ -96,9 +99,9 @@ namespace GameOfLife {
         }
 
         public void Refresh() {
-            for (int row = 0; row < BoolField.GetLength(0); ++row) {
-                for (int col = 0; col < BoolField.GetLength(0); ++col) {
-                    if (BoolField[row, col]) {
+            for (int row = 0; row < myBoolField.GetLength(0); ++row) {
+                for (int col = 0; col < myBoolField.GetLength(0); ++col) {
+                    if (myBoolField[row, col]) {
                         RectField[row, col].Fill = CellColor;
                     } else {
                         RectField[row, col].Fill = BackColor;
@@ -119,9 +122,9 @@ namespace GameOfLife {
                 row = rnd.Next((int)NCells);
                 col = rnd.Next((int)NCells);
 
-                if (BoolField[row, col]) continue;
+                if (myBoolField[row, col]) continue;
 
-                BoolField[row, col] = true;
+                myBoolField[row, col] = true;
                 ++c;
             }
         }
@@ -132,31 +135,21 @@ namespace GameOfLife {
             myGameTask = Task.Factory.StartNew(
                 () => {
                     myIsGameRunning = true;
-                    bool[,] newField;
-                    int neighbors;
 
                     while (!ct.IsCancellationRequested) {
-                        newField = CopyBoolArray(BoolField);
+                        myNewField = CopyBoolArray(myBoolField);
+                        myNumberOfTasks = NCells * NCells;
+                        mySignal = new ManualResetEvent(false);
 
                         for (int row = 0; row < NCells; ++row) {
                             for (int col = 0; col < NCells; ++col) {
-                                neighbors = CountNeighbors(row, col);
-
-                                //- dead cell with three neighbors comes to life again
-                                if (!BoolField[row, col] && (neighbors == 3))
-                                    newField[row, col] = true;
-
-                                //- life cell with one or less neighbors dies
-                                else if (BoolField[row, col] && (neighbors <= 1))
-                                    newField[row, col] = false;
-
-                                //- life cell with more than three neighbors dies
-                                else if (BoolField[row, col] && (neighbors > 3))
-                                    newField[row, col] = false;
+                                ThreadPool.QueueUserWorkItem(CheckCell, new Tuple<int, int>(row, col));
                             }
                         }
 
-                        BoolField = newField;
+                        mySignal.WaitOne();
+
+                        myBoolField = myNewField;
                         MainWindow.Instance.Dispatcher.BeginInvoke(new Action(delegate() {
                             Refresh();
                         })).Wait();
@@ -173,6 +166,29 @@ namespace GameOfLife {
             myCancellation.Cancel();
         }
 
+        private void CheckCell(Object threadContext) {
+            Tuple<int, int> tuple = threadContext as Tuple<int, int>;
+            int row = tuple.Item1;
+            int col = tuple.Item2;
+
+            int neighbors = CountNeighbors(row, col);
+
+            //- dead cell with three neighbors comes to life again
+            if (!myBoolField[row, col] && (neighbors == 3))
+                myNewField[row, col] = true;
+
+            //- life cell with one or less neighbors dies
+            else if (myBoolField[row, col] && (neighbors <= 1))
+                myNewField[row, col] = false;
+
+            //- life cell with more than three neighbors dies
+            else if (myBoolField[row, col] && (neighbors > 3))
+                myNewField[row, col] = false;
+
+            if (Interlocked.Decrement(ref myNumberOfTasks) == 0)
+                mySignal.Set();
+        }
+
         private int CountNeighbors(int rowInd, int colInd) {
             int maxCol = colInd == (NCells - 1) ? colInd : colInd + 1;
             int maxRow = rowInd == (NCells - 1) ? rowInd : rowInd + 1;
@@ -185,7 +201,7 @@ namespace GameOfLife {
                     if ((row == rowInd) && (col == colInd))
                         continue;
 
-                    if (BoolField[row, col])
+                    if (myBoolField[row, col])
                         ++c;
                 }
             }
@@ -223,7 +239,7 @@ namespace GameOfLife {
             for (int row = 0; row < NCells; ++row) {
                 for (int col = 0; col < NCells; ++col) {
                     if (RectField[row, col].Equals(rect)) {
-                        BoolField[row, col] = !BoolField[row, col];
+                        myBoolField[row, col] = !myBoolField[row, col];
                         found = true;
                         break;
                     }
