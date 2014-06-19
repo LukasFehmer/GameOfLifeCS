@@ -149,11 +149,11 @@ namespace GameOfLife {
                                     newField[row, col] = true;
 
                                 //- life cell with one or less neighbors dies
-                                if (BoolField[row, col] && (neighbors <= 1))
+                                else if (BoolField[row, col] && (neighbors <= 1))
                                     newField[row, col] = false;
 
                                 //- life cell with more than three neighbors dies
-                                if (BoolField[row, col] && (neighbors > 3))
+                                else if (BoolField[row, col] && (neighbors > 3))
                                     newField[row, col] = false;
 
                                 stillSomeoneAlive = stillSomeoneAlive || newField[row, col];
